@@ -69,7 +69,7 @@ def draw_custom_landmarks(image, landmarks_list):
 # ---------------------------------------------------------
 def main():
     st.title("🏋️‍♂️ AI Exercise Tracker")
-    st.markdown("ระบบประเมินท่าออกกำลังกายด้วยปัญญาประดิษฐ์ (Smooth Web Playback)")
+    st.markdown("ระบบประเมินท่าออกกำลังกายด้วยปัญญาประดิษฐ์ (Performance Mode)")
     st.markdown("---")
 
     # ==========================================
@@ -152,11 +152,10 @@ def main():
                 
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             
-            # [NEW] เตรียมไฟล์สำหรับเซฟวิดีโอที่วาดจุดเสร็จแล้ว
             temp_out_mp4 = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
             final_out_mp4 = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
             
-            # ตั้งค่า VideoWriter 
+            # ตั้งค่า VideoWriter
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             writer = cv2.VideoWriter(temp_out_mp4, fourcc, fps, (800, 450))
             
@@ -164,8 +163,11 @@ def main():
             confidence = 0.0
             frame_counter = 0
 
+            # บอกผู้ใช้ว่ากำลังประมวลผลแบบปิดพรีวิว
+            video_placeholder.info("⏳ ระบบกำลังวิเคราะห์ท่าทางแบบ Fast Processing (ปิดภาพ Preview ชั่วคราวเพื่อความรวดเร็วบน Cloud)... วิดีโอตัวเต็มจะแสดงขึ้นมาหลังจากแถบโหลดเต็ม 100%")
+
             # ---------------------------------------------------------
-            # Video Processing Loop (ประมวลผลแบบเร็วที่สุด ไม่ต้องมี time.sleep)
+            # Video Processing Loop (Blind Processing)
             # ---------------------------------------------------------
             while cap.isOpened():
                 ret, frame = cap.read()
@@ -209,7 +211,7 @@ def main():
                             confidence = predictions[best_class_idx]
                             current_action = classes[best_class_idx]
 
-                # วาดแถบข้อความ (Text) ลงไปในตัววิดีโอเลย
+                # วาดแถบข้อความ (Text) ลงไปในตัววิดีโอเลย (เซฟลงไฟล์อย่างเดียว ไม่ส่งขึ้นจอ)
                 text_color = (0, 255, 0) if confidence > 0.8 else (255, 165, 0)
                 if len(window_frames) < config.SEQUENCE_LENGTH:
                     display_text = f"Buffering... {len(window_frames)}/{config.SEQUENCE_LENGTH}"
@@ -223,13 +225,12 @@ def main():
                 # บันทึกเฟรมที่วาดเสร็จแล้วลงไฟล์วิดีโอ (แปลงกลับเป็น BGR สำหรับ OpenCV)
                 writer.write(cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR))
 
-                # อัปเดตหน้าเว็บทุกๆ 5 เฟรม (ให้ดูเหมือน Real-time พรีวิว โดยไม่ให้เน็ตค้าง)
-                if frame_counter % 5 == 0:
-                    video_placeholder.image(image_rgb, channels="RGB", use_container_width=True)
+                # [OPTIMIZATION] อัปเดตหน้าเว็บเฉพาะหลอดโหลด ทุกๆ 15 เฟรม เพื่อลดคอขวดอินเทอร์เน็ต
+                if frame_counter % 15 == 0:
                     if total_frames > 0:
                         progress = min(frame_counter / total_frames, 1.0)
                         progress_bar.progress(progress)
-                        status_text.text(f"กำลังวิเคราะห์ท่าทาง... {int(progress * 100)}%")
+                        status_text.text(f"🚀 กำลังให้ AI วิเคราะห์ท่าทาง (Blind Processing)... {int(progress * 100)}%")
 
             # คืนทรัพยากร
             cap.release()
@@ -240,12 +241,16 @@ def main():
             # ---------------------------------------------------------
             status_text.text("กำลังเตรียมวิดีโอผลลัพธ์แบบสมูท 100% (Finalizing Video)...")
             
-            # ใช้ ffmpeg แปลงไฟล์ เพื่อให้ Streamlit เล่นได้ลื่นไหล
-            cmd = ['ffmpeg', '-y', '-i', temp_out_mp4, '-vcodec', 'libx264', '-preset', 'fast', final_out_mp4]
+            cmd = ['ffmpeg', '-y', '-i', temp_out_mp4, '-vcodec', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'fast', final_out_mp4]
             try:
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except FileNotFoundError:
+                print("\n[WARNING] ไม่พบโปรแกรม FFMPEG ในระบบ! กรุณาติดตั้งด้วยคำสั่ง: brew install ffmpeg\n")
+                st.warning("⚠️ ไม่พบโปรแกรม ffmpeg ในเครื่อง ระบบจะพยายามแสดงผลด้วยไฟล์ต้นฉบับ (หากวิดีโอไม่เล่น กรุณาติดตั้ง ffmpeg)")
+                final_out_mp4 = temp_out_mp4
             except Exception as e:
-                st.warning("⚠️ ไม่สามารถใช้ ffmpeg ได้ ระบบจะพยายามแสดงผลด้วยไฟล์ต้นฉบับ")
+                print(f"\n[WARNING] เกิดข้อผิดพลาดในการแปลงไฟล์ด้วย FFMPEG: {e}\n")
+                st.warning("⚠️ แปลงวิดีโอไม่สำเร็จ ระบบจะพยายามแสดงผลด้วยไฟล์ต้นฉบับ")
                 final_out_mp4 = temp_out_mp4
 
             # เคลียร์พรีวิวและโชว์วิดีโอตัวเต็มที่สมูทที่สุด!
