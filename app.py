@@ -5,6 +5,7 @@ import tempfile
 import cv2
 import numpy as np
 import mediapipe as mp
+import time
 from collections import deque
 from tensorflow.keras.models import load_model
 
@@ -152,23 +153,29 @@ def main():
             
             cap = cv2.VideoCapture(tfile.name)
             
+            # [NEW] ดึงค่าความเร็ว (FPS) ของวิดีโอต้นฉบับ
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if fps == 0 or np.isnan(fps):
+                fps = 30.0 # ถ้าอ่านค่าไม่ได้ ให้ใช้ค่ามาตรฐาน 30 FPS
+            
             current_action = "Buffering..."
             confidence = 0.0
             
-            # [NEW] Counter for Optimization
             frame_counter = 0
 
             # ---------------------------------------------------------
             # Video Processing Loop
             # ---------------------------------------------------------
             while cap.isOpened():
+                loop_start_time = time.time() # จับเวลาตอนเริ่มลูป
+
                 ret, frame = cap.read()
                 if not ret:
                     break
                     
                 frame_counter += 1
 
-                # [OPTIMIZATION 1] Reduce resolution to 800x450 (16:9) to save CPU
+                # ปรับภาพเป็น 800x450 เพื่อความสมูทในการแสดงผลบนเว็บ
                 frame = cv2.resize(frame, (800, 450))
                 
                 image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -186,14 +193,14 @@ def main():
                         window_frames.append(features)
 
                     if len(window_frames) == config.SEQUENCE_LENGTH:
-                        # [OPTIMIZATION 2] Predict only every 3 frames
+                        # พยากรณ์ทุกๆ 3 เฟรม เพื่อไม่ให้กินทรัพยากรมากเกินไป
                         if frame_counter % 3 == 0:
                             input_data = np.expand_dims(np.array(window_frames), axis=0)
                             predictions = model.predict(input_data, verbose=0)[0]
                             
                             best_class_idx = np.argmax(predictions)
                             
-                            # Anti-Bias Logic
+                            # Anti-Bias Logic สำหรับท่า OTHER
                             OTHER_THRESHOLD = 0.85 
                             if "other" in classes:
                                 other_idx = classes.index("other")
@@ -205,17 +212,21 @@ def main():
                             confidence = predictions[best_class_idx]
                             current_action = classes[best_class_idx]
 
-                # [OPTIMIZATION 3] Update Streamlit UI only every 2 frames
-                # Prevents WebSocket network flooding and reduces lag
-                if frame_counter % 2 == 0:
-                    if len(window_frames) < config.SEQUENCE_LENGTH:
-                        action_metric.metric(label="Current Action (ท่าปัจจุบัน)", value=f"Buffering... {len(window_frames)}/{config.SEQUENCE_LENGTH}")
-                        conf_metric.metric(label="Confidence (ความมั่นใจ)", value="-")
-                    else:
-                        action_metric.metric(label="Current Action (ท่าปัจจุบัน)", value=current_action.upper())
-                        conf_metric.metric(label="Confidence (ความมั่นใจ)", value=f"{confidence*100:.1f} %")
+                # อัปเดต UI 
+                if len(window_frames) < config.SEQUENCE_LENGTH:
+                    action_metric.metric(label="Current Action (ท่าปัจจุบัน)", value=f"Buffering... {len(window_frames)}/{config.SEQUENCE_LENGTH}")
+                    conf_metric.metric(label="Confidence (ความมั่นใจ)", value="-")
+                else:
+                    action_metric.metric(label="Current Action (ท่าปัจจุบัน)", value=current_action.upper())
+                    conf_metric.metric(label="Confidence (ความมั่นใจ)", value=f"{confidence*100:.1f} %")
 
-                    video_placeholder.image(image_rgb, channels="RGB", use_container_width=True)
+                video_placeholder.image(image_rgb, channels="RGB", use_container_width=True)
+
+                # [NEW] ตัวจำกัดความเร็ว (Frame Pacer) ป้องกันปัญหาคลิปเล่นเร็วเกินไปบนชิป M4
+                loop_processing_time = time.time() - loop_start_time
+                time_to_wait = (1.0 / fps) - loop_processing_time
+                if time_to_wait > 0:
+                    time.sleep(time_to_wait) # สั่งให้โปรแกรมพักตามจังหวะที่เหลือ เพื่อให้ภาพเล่นในความเร็วปกติ
 
             cap.release()
             st.success("✅ ประมวลผลวิดีโอเสร็จสิ้น!")
