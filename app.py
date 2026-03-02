@@ -98,7 +98,6 @@ def main():
 
         st.markdown("---")
 
-        # [NEW] สวิตช์ให้ผู้ใช้เลือกโหมดการทำงาน
         st.subheader("2. โหมดการแสดงผล (Processing Mode)")
         display_mode = st.radio(
             "เลือกรูปแบบการประมวลผลวิดีโอ:",
@@ -136,6 +135,9 @@ def main():
             if not os.path.exists(model_path):
                 st.error(f"❌ ไม่พบไฟล์โมเดล '{selected_model_file}' กรุณาตรวจสอบให้แน่ใจว่าได้นำไฟล์มาวางในโฟลเดอร์เดียวกับ app.py แล้ว")
                 return
+
+            # เริ่มจับเวลาประมวลผลทั้งหมด
+            overall_start_time = time.time()
 
             # โหลด Model และตั้งค่า MediaPipe
             model = load_model(model_path)
@@ -238,16 +240,14 @@ def main():
                 # บันทึกเฟรมที่วาดเสร็จแล้วลงไฟล์วิดีโอ
                 writer.write(cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR))
 
-                # [OPTIMIZATION] อัปเดตหน้าเว็บตามโหมดที่เลือก
+                # อัปเดตหน้าเว็บตามโหมดที่เลือก
                 if is_fast_mode:
-                    # โหมดเร็ว: อัปเดตแค่หลอดโหลด (ไม่อัปเดตรูปภาพ)
                     if frame_counter % 15 == 0:
                         if total_frames > 0:
                             progress = min(frame_counter / total_frames, 1.0)
                             progress_bar.progress(progress)
                             status_text.text(f"🚀 กำลังรันโมเดล AI (Fast Mode)... {int(progress * 100)}%")
                 else:
-                    # โหมด Live: อัปเดตทั้งหลอดโหลดและรูปภาพพรีวิว
                     if frame_counter % 5 == 0:
                         video_placeholder.image(image_rgb, channels="RGB", use_container_width=True)
                         if total_frames > 0:
@@ -267,21 +267,29 @@ def main():
             cmd = ['ffmpeg', '-y', '-i', temp_out_mp4, '-vcodec', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'fast', final_out_mp4]
             try:
                 subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except FileNotFoundError:
-                print("\n[WARNING] ไม่พบโปรแกรม FFMPEG ในระบบ! กรุณาติดตั้งด้วยคำสั่ง: brew install ffmpeg\n")
-                st.warning("⚠️ ไม่พบโปรแกรม ffmpeg ในเครื่อง ระบบจะพยายามแสดงผลด้วยไฟล์ต้นฉบับ (หากวิดีโอไม่เล่น กรุณาติดตั้ง ffmpeg)")
-                final_out_mp4 = temp_out_mp4
             except Exception as e:
-                print(f"\n[WARNING] เกิดข้อผิดพลาดในการแปลงไฟล์ด้วย FFMPEG: {e}\n")
                 st.warning("⚠️ แปลงวิดีโอไม่สำเร็จ ระบบจะพยายามแสดงผลด้วยไฟล์ต้นฉบับ")
                 final_out_mp4 = temp_out_mp4
 
-            # เคลียร์พรีวิวและโชว์วิดีโอตัวเต็มที่สมูทที่สุด!
+            # หยุดเวลาประมวลผล
+            overall_end_time = time.time()
+            total_duration = overall_end_time - overall_start_time
+
+            # เคลียร์พรีวิวและโชว์วิดีโอตัวเต็ม
             video_placeholder.empty()
             progress_bar.empty()
             status_text.empty()
             
-            st.success("✅ ประมวลผลเสร็จสิ้น! ดูผลลัพธ์การวิเคราะห์ท่าทางด้านล่างได้เลยครับ")
+            # แสดงผลลัพธ์ความสำเร็จพร้อมเวลาที่ใช้
+            st.success(f"✅ ประมวลผลเสร็จสิ้น! (ใช้เวลาทั้งหมด: {total_duration:.2f} วินาที)")
+            
+            # แสดงรายละเอียดเพิ่มเติมในรูปของ Metric
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.metric("เวลาประมวลผลรวม", f"{total_duration:.2f} วินาที")
+            with col_b:
+                st.metric("ความเร็วเฉลี่ย", f"{frame_counter / total_duration:.1f} FPS")
+
             st.video(final_out_mp4)
 
 if __name__ == "__main__":
