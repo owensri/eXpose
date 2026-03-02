@@ -1,5 +1,5 @@
 streamlit
-opencv-python-headless
-numpy
-mediapipe
-tensorflow-cpu
+opencv-python-headless==4.9.0.80
+numpy<2.0.0
+mediapipe==0.10.14
+tensorflow-cpu==2.15.0
