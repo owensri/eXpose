@@ -69,7 +69,7 @@ def draw_custom_landmarks(image, landmarks_list):
 # ---------------------------------------------------------
 def main():
     st.title("🏋️‍♂️ AI Exercise Tracker")
-    st.markdown("ระบบประเมินท่าออกกำลังกายด้วยปัญญาประดิษฐ์ (Performance Mode)")
+    st.markdown("ระบบประเมินท่าออกกำลังกายด้วยปัญญาประดิษฐ์")
     st.markdown("---")
 
     # ==========================================
@@ -98,7 +98,19 @@ def main():
 
         st.markdown("---")
 
-        st.subheader("2. อัปโหลดคลิปวิดีโอ")
+        # [NEW] สวิตช์ให้ผู้ใช้เลือกโหมดการทำงาน
+        st.subheader("2. โหมดการแสดงผล (Processing Mode)")
+        display_mode = st.radio(
+            "เลือกรูปแบบการประมวลผลวิดีโอ:",
+            ["🚀 Fast Mode (ปิดพรีวิว - ประมวลผลเร็วที่สุด)", 
+             "👁️ Live Preview (แสดงภาพขณะวิเคราะห์ - ใช้เวลามากขึ้น)"],
+            help="Fast Mode จะช่วยให้เซิร์ฟเวอร์ประมวลผลเสร็จไวขึ้นโดยไม่แสดงภาพสดระหว่างทำ"
+        )
+        is_fast_mode = "Fast Mode" in display_mode
+
+        st.markdown("---")
+
+        st.subheader("3. อัปโหลดคลิปวิดีโอ")
         uploaded_file = st.file_uploader(
             "เลือกไฟล์วิดีโอ (MP4, MOV, AVI)", 
             type=['mp4', 'mov', 'avi']
@@ -112,7 +124,7 @@ def main():
     # Main Area
     # ==========================================
     if uploaded_file is None:
-        st.info("👈 กรุณาอัปโหลดคลิปวิดีโอจากแถบเมนูด้านซ้ายเพื่อเริ่มต้นใช้งานครับ")
+        st.info("👈 กรุณาอัปโหลดคลิปวิดีโอและเลือกการตั้งค่าจากแถบเมนูด้านซ้ายเพื่อเริ่มต้นใช้งานครับ")
     else:
         if not start_button:
             st.success(f"โหลดไฟล์ {uploaded_file.name} สำเร็จ! กดปุ่ม 'เริ่มประมวลผลวิดีโอ' ได้เลยครับ")
@@ -163,11 +175,12 @@ def main():
             confidence = 0.0
             frame_counter = 0
 
-            # บอกผู้ใช้ว่ากำลังประมวลผลแบบปิดพรีวิว
-            video_placeholder.info("⏳ ระบบกำลังวิเคราะห์ท่าทางแบบ Fast Processing (ปิดภาพ Preview ชั่วคราวเพื่อความรวดเร็วบน Cloud)... วิดีโอตัวเต็มจะแสดงขึ้นมาหลังจากแถบโหลดเต็ม 100%")
+            # บอกผู้ใช้ว่ากำลังอยู่ในโหมดไหน
+            if is_fast_mode:
+                video_placeholder.info("⏳ กำลังวิเคราะห์ท่าทางแบบ **Fast Processing** (วิดีโอตัวเต็มจะแสดงขึ้นมาหลังจากหลอดโหลดเต็ม 100% เพื่อความรวดเร็วบน Cloud)")
 
             # ---------------------------------------------------------
-            # Video Processing Loop (Blind Processing)
+            # Video Processing Loop
             # ---------------------------------------------------------
             while cap.isOpened():
                 ret, frame = cap.read()
@@ -211,7 +224,7 @@ def main():
                             confidence = predictions[best_class_idx]
                             current_action = classes[best_class_idx]
 
-                # วาดแถบข้อความ (Text) ลงไปในตัววิดีโอเลย (เซฟลงไฟล์อย่างเดียว ไม่ส่งขึ้นจอ)
+                # วาดแถบข้อความ (Text) ลงไปในตัววิดีโอเลย 
                 text_color = (0, 255, 0) if confidence > 0.8 else (255, 165, 0)
                 if len(window_frames) < config.SEQUENCE_LENGTH:
                     display_text = f"Buffering... {len(window_frames)}/{config.SEQUENCE_LENGTH}"
@@ -222,15 +235,25 @@ def main():
                 cv2.rectangle(image_rgb, (0, 0), (800, 50), (0, 0, 0), -1)
                 cv2.putText(image_rgb, display_text, (15, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, text_color, 2, cv2.LINE_AA)
 
-                # บันทึกเฟรมที่วาดเสร็จแล้วลงไฟล์วิดีโอ (แปลงกลับเป็น BGR สำหรับ OpenCV)
+                # บันทึกเฟรมที่วาดเสร็จแล้วลงไฟล์วิดีโอ
                 writer.write(cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR))
 
-                # [OPTIMIZATION] อัปเดตหน้าเว็บเฉพาะหลอดโหลด ทุกๆ 15 เฟรม เพื่อลดคอขวดอินเทอร์เน็ต
-                if frame_counter % 15 == 0:
-                    if total_frames > 0:
-                        progress = min(frame_counter / total_frames, 1.0)
-                        progress_bar.progress(progress)
-                        status_text.text(f"🚀 กำลังให้ AI วิเคราะห์ท่าทาง (Blind Processing)... {int(progress * 100)}%")
+                # [OPTIMIZATION] อัปเดตหน้าเว็บตามโหมดที่เลือก
+                if is_fast_mode:
+                    # โหมดเร็ว: อัปเดตแค่หลอดโหลด (ไม่อัปเดตรูปภาพ)
+                    if frame_counter % 15 == 0:
+                        if total_frames > 0:
+                            progress = min(frame_counter / total_frames, 1.0)
+                            progress_bar.progress(progress)
+                            status_text.text(f"🚀 กำลังรันโมเดล AI (Fast Mode)... {int(progress * 100)}%")
+                else:
+                    # โหมด Live: อัปเดตทั้งหลอดโหลดและรูปภาพพรีวิว
+                    if frame_counter % 5 == 0:
+                        video_placeholder.image(image_rgb, channels="RGB", use_container_width=True)
+                        if total_frames > 0:
+                            progress = min(frame_counter / total_frames, 1.0)
+                            progress_bar.progress(progress)
+                            status_text.text(f"👁️ กำลังวิเคราะห์แบบ Real-time (Live Preview)... {int(progress * 100)}%")
 
             # คืนทรัพยากร
             cap.release()
@@ -258,7 +281,7 @@ def main():
             progress_bar.empty()
             status_text.empty()
             
-            st.success("✅ ประมวลผลเสร็จสิ้น! ดูผลลัพธ์แบบลื่นไหล 100% ด้านล่างได้เลยครับ")
+            st.success("✅ ประมวลผลเสร็จสิ้น! ดูผลลัพธ์การวิเคราะห์ท่าทางด้านล่างได้เลยครับ")
             st.video(final_out_mp4)
 
 if __name__ == "__main__":
