@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import mediapipe as mp
 import time
+import subprocess
 from collections import deque
 from tensorflow.keras.models import load_model
 
@@ -68,7 +69,7 @@ def draw_custom_landmarks(image, landmarks_list):
 # ---------------------------------------------------------
 def main():
     st.title("🏋️‍♂️ AI Exercise Tracker")
-    st.markdown("ระบบประเมินท่าออกกำลังกายด้วยปัญญาประดิษฐ์ (Real-time Pose Estimation)")
+    st.markdown("ระบบประเมินท่าออกกำลังกายด้วยปัญญาประดิษฐ์ (Smooth Web Playback)")
     st.markdown("---")
 
     # ==========================================
@@ -92,7 +93,6 @@ def main():
         }
         selected_model_file = model_files[model_choice]
         
-        # Absolute path for model loading
         base_dir = os.path.dirname(os.path.abspath(__file__))
         model_path = os.path.join(base_dir, selected_model_file)
 
@@ -119,13 +119,13 @@ def main():
             st.video(uploaded_file)
             
         else:
-            st.subheader(f"📊 ผลการวิเคราะห์แบบ Real-time (ใช้โมเดล: {model_choice.split('-')[0].strip()})")
+            st.subheader(f"📊 กำลังประมวลผล... (ใช้โมเดล: {model_choice.split('-')[0].strip()})")
             
             if not os.path.exists(model_path):
                 st.error(f"❌ ไม่พบไฟล์โมเดล '{selected_model_file}' กรุณาตรวจสอบให้แน่ใจว่าได้นำไฟล์มาวางในโฟลเดอร์เดียวกับ app.py แล้ว")
                 return
 
-            # Load Model and Tools
+            # โหลด Model และตั้งค่า MediaPipe
             model = load_model(model_path)
             classes = config.CLASSES
             
@@ -136,49 +136,48 @@ def main():
             smoother = LandmarkSmoother()
             window_frames = deque(maxlen=config.SEQUENCE_LENGTH)
 
-            # Placeholders for UI
-            col1, col2 = st.columns(2)
-            with col1:
-                action_metric = st.empty() 
-                action_metric.metric(label="Current Action (ท่าปัจจุบัน)", value="Buffering...")
-            with col2:
-                conf_metric = st.empty()   
-                conf_metric.metric(label="Confidence (ความมั่นใจ)", value="0.0 %")
-                
-            st.markdown("---")
+            # สร้างพื้นที่สำหรับอัปเดต UI
+            progress_bar = st.progress(0)
+            status_text = st.empty()
             video_placeholder = st.empty() 
             
+            # อ่านไฟล์วิดีโอ
             tfile = tempfile.NamedTemporaryFile(delete=False) 
             tfile.write(uploaded_file.read())
-            
             cap = cv2.VideoCapture(tfile.name)
             
-            # [NEW] ดึงค่าความเร็ว (FPS) ของวิดีโอต้นฉบับ
             fps = cap.get(cv2.CAP_PROP_FPS)
             if fps == 0 or np.isnan(fps):
-                fps = 30.0 # ถ้าอ่านค่าไม่ได้ ให้ใช้ค่ามาตรฐาน 30 FPS
+                fps = 30.0
+                
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            
+            # [NEW] เตรียมไฟล์สำหรับเซฟวิดีโอที่วาดจุดเสร็จแล้ว
+            temp_out_mp4 = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
+            final_out_mp4 = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
+            
+            # ตั้งค่า VideoWriter 
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            writer = cv2.VideoWriter(temp_out_mp4, fourcc, fps, (800, 450))
             
             current_action = "Buffering..."
             confidence = 0.0
-            
             frame_counter = 0
 
             # ---------------------------------------------------------
-            # Video Processing Loop
+            # Video Processing Loop (ประมวลผลแบบเร็วที่สุด ไม่ต้องมี time.sleep)
             # ---------------------------------------------------------
             while cap.isOpened():
-                loop_start_time = time.time() # จับเวลาตอนเริ่มลูป
-
                 ret, frame = cap.read()
                 if not ret:
                     break
                     
                 frame_counter += 1
 
-                # ปรับภาพเป็น 800x450 เพื่อความสมูทในการแสดงผลบนเว็บ
+                # ปรับขนาดภาพเป็น 800x450
                 frame = cv2.resize(frame, (800, 450))
-                
                 image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
                 image_rgb.flags.writeable = False
                 results = pose.process(image_rgb)
                 image_rgb.flags.writeable = True
@@ -193,14 +192,12 @@ def main():
                         window_frames.append(features)
 
                     if len(window_frames) == config.SEQUENCE_LENGTH:
-                        # พยากรณ์ทุกๆ 3 เฟรม เพื่อไม่ให้กินทรัพยากรมากเกินไป
                         if frame_counter % 3 == 0:
                             input_data = np.expand_dims(np.array(window_frames), axis=0)
                             predictions = model.predict(input_data, verbose=0)[0]
                             
                             best_class_idx = np.argmax(predictions)
                             
-                            # Anti-Bias Logic สำหรับท่า OTHER
                             OTHER_THRESHOLD = 0.85 
                             if "other" in classes:
                                 other_idx = classes.index("other")
@@ -212,24 +209,52 @@ def main():
                             confidence = predictions[best_class_idx]
                             current_action = classes[best_class_idx]
 
-                # อัปเดต UI 
+                # วาดแถบข้อความ (Text) ลงไปในตัววิดีโอเลย
+                text_color = (0, 255, 0) if confidence > 0.8 else (255, 165, 0)
                 if len(window_frames) < config.SEQUENCE_LENGTH:
-                    action_metric.metric(label="Current Action (ท่าปัจจุบัน)", value=f"Buffering... {len(window_frames)}/{config.SEQUENCE_LENGTH}")
-                    conf_metric.metric(label="Confidence (ความมั่นใจ)", value="-")
+                    display_text = f"Buffering... {len(window_frames)}/{config.SEQUENCE_LENGTH}"
+                    text_color = (255, 255, 0)
                 else:
-                    action_metric.metric(label="Current Action (ท่าปัจจุบัน)", value=current_action.upper())
-                    conf_metric.metric(label="Confidence (ความมั่นใจ)", value=f"{confidence*100:.1f} %")
+                    display_text = f"Action: {current_action.upper()} ({confidence*100:.1f}%)"
 
-                video_placeholder.image(image_rgb, channels="RGB", use_container_width=True)
+                cv2.rectangle(image_rgb, (0, 0), (800, 50), (0, 0, 0), -1)
+                cv2.putText(image_rgb, display_text, (15, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, text_color, 2, cv2.LINE_AA)
 
-                # [NEW] ตัวจำกัดความเร็ว (Frame Pacer) ป้องกันปัญหาคลิปเล่นเร็วเกินไปบนชิป M4
-                loop_processing_time = time.time() - loop_start_time
-                time_to_wait = (1.0 / fps) - loop_processing_time
-                if time_to_wait > 0:
-                    time.sleep(time_to_wait) # สั่งให้โปรแกรมพักตามจังหวะที่เหลือ เพื่อให้ภาพเล่นในความเร็วปกติ
+                # บันทึกเฟรมที่วาดเสร็จแล้วลงไฟล์วิดีโอ (แปลงกลับเป็น BGR สำหรับ OpenCV)
+                writer.write(cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR))
 
+                # อัปเดตหน้าเว็บทุกๆ 5 เฟรม (ให้ดูเหมือน Real-time พรีวิว โดยไม่ให้เน็ตค้าง)
+                if frame_counter % 5 == 0:
+                    video_placeholder.image(image_rgb, channels="RGB", use_container_width=True)
+                    if total_frames > 0:
+                        progress = min(frame_counter / total_frames, 1.0)
+                        progress_bar.progress(progress)
+                        status_text.text(f"กำลังวิเคราะห์ท่าทาง... {int(progress * 100)}%")
+
+            # คืนทรัพยากร
             cap.release()
-            st.success("✅ ประมวลผลวิดีโอเสร็จสิ้น!")
+            writer.release()
+            
+            # ---------------------------------------------------------
+            # เข้ารหัสวิดีโอให้รองรับเบราว์เซอร์ (H.264)
+            # ---------------------------------------------------------
+            status_text.text("กำลังเตรียมวิดีโอผลลัพธ์แบบสมูท 100% (Finalizing Video)...")
+            
+            # ใช้ ffmpeg แปลงไฟล์ เพื่อให้ Streamlit เล่นได้ลื่นไหล
+            cmd = ['ffmpeg', '-y', '-i', temp_out_mp4, '-vcodec', 'libx264', '-preset', 'fast', final_out_mp4]
+            try:
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception as e:
+                st.warning("⚠️ ไม่สามารถใช้ ffmpeg ได้ ระบบจะพยายามแสดงผลด้วยไฟล์ต้นฉบับ")
+                final_out_mp4 = temp_out_mp4
+
+            # เคลียร์พรีวิวและโชว์วิดีโอตัวเต็มที่สมูทที่สุด!
+            video_placeholder.empty()
+            progress_bar.empty()
+            status_text.empty()
+            
+            st.success("✅ ประมวลผลเสร็จสิ้น! ดูผลลัพธ์แบบลื่นไหล 100% ด้านล่างได้เลยครับ")
+            st.video(final_out_mp4)
 
 if __name__ == "__main__":
     main()
