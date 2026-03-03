@@ -278,8 +278,8 @@ def main():
 
                 # --- 3. แสดงผล UI บนวิดีโอ ---
                 
-                # ดึงสถานะปัจจุบันของท่าที่กำลังทำอยู่มาโชว์
-                current_stage = stages.get(current_action, "-") if current_action in stages else "-"
+                # ดึงสถานะปัจจุบันของท่าที่กำลังทำอยู่มาโชว์ (ถ้าเป็น None ให้เป็น "-")
+                current_stage = stages.get(current_action) or "-"
                 
                 # แถบบอกท่าทางด้านซ้ายบน (เพิ่มบอก Stage เข้าไปด้วย)
                 text_color = (0, 255, 0) if confidence > 0.8 else (255, 165, 0)
