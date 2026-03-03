@@ -78,7 +78,7 @@ def calculate_angle(a, b, c):
 # ---------------------------------------------------------
 def main():
     st.title("🏋️‍♂️ AI Exercise Tracker")
-    st.markdown("ระบบประเมินท่าออกกำลังกายและนับจำนวนครั้งด้วย AI")
+    st.markdown("ระบบประเมินท่าออกกำลังกายและนับจำนวนครั้งแยกรายท่าด้วย AI")
     st.markdown("---")
 
     # ==========================================
@@ -178,9 +178,9 @@ def main():
             confidence = 0.0
             frame_counter = 0
 
-            # --- ตัวแปรสำหรับนับรอบ (Repetition Counter) ---
-            counter = 0 
-            stage = None # สถานะปัจจุบัน (up หรือ down)
+            # --- ตัวแปรสำหรับนับรอบ (Repetition Counters แยกรายท่า) ---
+            counters = {'pushup': 0, 'squat': 0, 'lunge': 0}
+            stages = {'pushup': None, 'squat': None, 'lunge': None}
 
             if is_fast_mode:
                 video_placeholder.info("⏳ กำลังวิเคราะห์และนับจำนวนครั้งแบบ **Fast Processing**...")
@@ -229,7 +229,7 @@ def main():
                             confidence = predictions[best_class_idx]
                             current_action = classes[best_class_idx]
 
-                    # 2. ระบบนับจำนวนครั้ง (Repetition Logic)
+                    # 2. ระบบนับจำนวนครั้ง (Repetition Logic แยกรายท่า)
                     try:
                         # เช็คท่า Squat
                         if current_action == 'squat':
@@ -240,10 +240,10 @@ def main():
                             angle = calculate_angle(hip, knee, ankle)
                             
                             if angle > 160:
-                                stage = "up"
-                            if angle < 100 and stage == 'up':
-                                stage = "down"
-                                counter += 1
+                                stages['squat'] = "up"
+                            if angle < 100 and stages['squat'] == 'up':
+                                stages['squat'] = "down"
+                                counters['squat'] += 1
 
                         # เช็คท่า Pushup (วิดพื้น)
                         elif current_action == 'pushup':
@@ -254,34 +254,53 @@ def main():
                             angle = calculate_angle(shoulder, elbow, wrist)
                             
                             if angle > 160:
-                                stage = "up"
-                            if angle < 90 and stage == 'up':
-                                stage = "down"
-                                counter += 1
+                                stages['pushup'] = "up"
+                            if angle < 90 and stages['pushup'] == 'up':
+                                stages['pushup'] = "down"
+                                counters['pushup'] += 1
+                                
+                        # เช็คท่า Lunge (ใช้มุมเข่าในการประเมิน)
+                        elif current_action == 'lunge':
+                            hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
+                            knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y]
+                            ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y]
+                            
+                            angle = calculate_angle(hip, knee, ankle)
+                            
+                            if angle > 150:
+                                stages['lunge'] = "up"
+                            if angle < 100 and stages['lunge'] == 'up':
+                                stages['lunge'] = "down"
+                                counters['lunge'] += 1
                                 
                     except:
                         pass # เผื่อกรณีมองไม่เห็นจุดข้อต่อ ระบบจะไม่พัง
 
                 # --- 3. แสดงผล UI บนวิดีโอ ---
                 
-                # แถบบอกท่าทางด้านซ้ายบน
+                # ดึงสถานะปัจจุบันของท่าที่กำลังทำอยู่มาโชว์
+                current_stage = stages.get(current_action, "-") if current_action in stages else "-"
+                
+                # แถบบอกท่าทางด้านซ้ายบน (เพิ่มบอก Stage เข้าไปด้วย)
                 text_color = (0, 255, 0) if confidence > 0.8 else (255, 165, 0)
                 if len(window_frames) < config.SEQUENCE_LENGTH:
                     display_text = f"Buffering... {len(window_frames)}/{config.SEQUENCE_LENGTH}"
                     text_color = (255, 255, 0)
                 else:
-                    display_text = f"Action: {current_action.upper()} ({confidence*100:.1f}%)"
+                    display_text = f"Action: {current_action.upper()} ({confidence*100:.1f}%) | State: {current_stage.upper()}"
 
-                cv2.rectangle(image_rgb, (0, 0), (800, 50), (0, 0, 0), -1)
-                cv2.putText(image_rgb, display_text, (15, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, text_color, 2, cv2.LINE_AA)
+                cv2.rectangle(image_rgb, (0, 0), (800, 45), (0, 0, 0), -1)
+                cv2.putText(image_rgb, display_text, (15, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, text_color, 2, cv2.LINE_AA)
 
-                # กล่องนับจำนวนครั้ง (Reps Counter) ด้านขวาบน
-                cv2.rectangle(image_rgb, (600, 0), (800, 100), (245, 117, 16), -1)
-                cv2.putText(image_rgb, 'REPS', (615, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,0), 2, cv2.LINE_AA)
-                cv2.putText(image_rgb, str(counter), (615, 85), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 3, cv2.LINE_AA)
+                # กล่องนับจำนวนครั้งแยก 3 ท่า (Reps Counters) ด้านขวาบน
+                cv2.rectangle(image_rgb, (620, 0), (800, 110), (40, 40, 40), -1) # พื้นหลังสีเทาเข้ม
                 
-                cv2.putText(image_rgb, 'STAGE', (700, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,0), 2, cv2.LINE_AA)
-                cv2.putText(image_rgb, str(stage) if stage else '-', (700, 85), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255,255,255), 2, cv2.LINE_AA)
+                # โชว์ PUSHUP
+                cv2.putText(image_rgb, f"PUSHUP: {counters['pushup']}", (630, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 165, 0) if current_action == 'pushup' else (255,255,255), 2, cv2.LINE_AA)
+                # โชว์ SQUAT
+                cv2.putText(image_rgb, f"SQUAT : {counters['squat']}", (630, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 165, 0) if current_action == 'squat' else (255,255,255), 2, cv2.LINE_AA)
+                # โชว์ LUNGE
+                cv2.putText(image_rgb, f"LUNGE : {counters['lunge']}", (630, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 165, 0) if current_action == 'lunge' else (255,255,255), 2, cv2.LINE_AA)
 
                 # บันทึกเฟรมที่วาดเสร็จแล้ว
                 writer.write(cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR))
@@ -323,14 +342,26 @@ def main():
             
             st.success("✅ ประมวลผลเสร็จสิ้น! ดูผลลัพธ์ด้านล่างได้เลยครับ")
             
-            # แสดง Metrics สรุปผลสวยๆ 3 กล่อง
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("🔥 จำนวนครั้งที่ทำได้ (Reps)", f"{counter} ครั้ง")
-            with col2:
-                st.metric("⏱️ เวลาประมวลผลรวม", f"{total_duration:.2f} วินาที")
-            with col3:
-                st.metric("⚡ ความเร็วเฉลี่ย", f"{frame_counter / total_duration:.1f} FPS")
+            # ==========================================
+            # แสดง Metrics สรุปผล
+            # ==========================================
+            st.subheader("🔥 สรุปจำนวนครั้ง (Repetitions)")
+            col_p, col_s, col_l = st.columns(3)
+            with col_p:
+                st.metric("Pushup (วิดพื้น)", f"{counters['pushup']} ครั้ง")
+            with col_s:
+                st.metric("Squat (สควอท)", f"{counters['squat']} ครั้ง")
+            with col_l:
+                st.metric("Lunge (ลันจ์)", f"{counters['lunge']} ครั้ง")
+                
+            st.markdown("---")
+            
+            st.subheader("⏱️ ประสิทธิภาพการประมวลผล (Performance)")
+            col_time, col_fps = st.columns(2)
+            with col_time:
+                st.metric("เวลาประมวลผลรวม", f"{total_duration:.2f} วินาที")
+            with col_fps:
+                st.metric("ความเร็วเฉลี่ย", f"{frame_counter / total_duration:.1f} FPS")
 
             st.video(final_out_mp4)
 
