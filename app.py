@@ -1,5 +1,7 @@
 import streamlit as st
 import os
+ # Force TensorFlow to use legacy tf.keras instead of Keras 3 (required for models trained with TF 2.x)
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
 import sys
 import tempfile
 import cv2
