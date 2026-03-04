@@ -1,6 +1,6 @@
 streamlit
-opencv-python-headless==4.9.0.80
+opencv-python-headless
 numpy<2.0.0
-mediapipe==0.10.14
-tensorflow-cpu==2.15.0
+mediapipe
+tensorflow-cpu
 ffmpeg-python
