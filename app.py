@@ -124,7 +124,7 @@ VOTING_WINDOW = 5
 # ---------------------------------------------------------
 @st.cache_resource
 def load_model_cached(path):
-    return load_model(path)
+    return load_model(path, compile=False)
 
 # ---------------------------------------------------------
 # Dynamic Side Angle Selection
