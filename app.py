@@ -8,8 +8,8 @@ import mediapipe as mp
 import time
 import subprocess
 from collections import deque
-from tensorflow import keras
-load_model = keras.models.load_model
+import tensorflow as tf
+load_model = tf.keras.models.load_model
 from functools import lru_cache
 
 # Import tools from our src folder
