@@ -122,7 +122,7 @@ def main():
         st.markdown("---")
         
         diff_display = st.selectbox("ความเข้มงวด (Difficulty Level):", 
-                                    ["Beginner (ผู้เริ่มต้น)", "Advanced (ถูกต้องตามหลัก)"], 
+                                    ["Beginner", "Advanced"], 
                                     index=0)
         
         difficulty_level = "beginner" if "Beginner" in diff_display else "advanced"
