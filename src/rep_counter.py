@@ -97,7 +97,8 @@ class RepCounter:
         primary_angle, secondary_angle, p_landmark, s_landmark = self.get_angles(landmarks, mp_pose, current_action)
         
         if primary_angle is None:
-            return self.counters, self.stages, "อวัยวะสำคัญหลุดกล้อง!", (0, 0, 255), None
+            # เปลี่ยนเป็น (255, 0, 0) สำหรับ RGB (สีแดง)
+            return self.counters, self.stages, "อวัยวะสำคัญหลุดกล้อง!", (255, 0, 0), None
 
         down_th, up_th, form_th = self.thresholds[self.difficulty][current_action]
 
@@ -109,7 +110,8 @@ class RepCounter:
         is_fully_up = primary_angle > up_th
 
         if is_bad_form:
-            color = (0, 0, 255) # สีแดง (เตือนฟอร์มผิด)
+            # เปลี่ยนเป็น (255, 0, 0) สำหรับ RGB (สีแดง)
+            color = (255, 0, 0) 
             
             if is_deep_down:
                 if current_action == 'pushup':
