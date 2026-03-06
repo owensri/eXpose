@@ -7,6 +7,9 @@ import numpy as np
 import mediapipe as mp
 import time
 import subprocess
+import urllib.request
+import pandas as pd
+import altair as alt
 from collections import deque
 from tensorflow.keras.models import load_model
 from PIL import Image, ImageDraw, ImageFont
@@ -23,6 +26,7 @@ from rep_counter import RepCounter
 # ---------------------------------------------------------
 st.set_page_config(page_title="AI Exercise Tracker", page_icon=None, layout="wide")
 
+# CSS เฉพาะการตกแต่งความสวยงามของตัวหนังสือและกล่องสรุปผล (ไม่มีการซ่อน UI แล้ว)
 st.markdown("""
     <style>
     .main { padding-top: 2rem; }
@@ -71,13 +75,23 @@ def load_model_cached(path):
 
 @st.cache_resource
 def get_thai_font(size):
+    font_name = "Sarabun-Regular.ttf"
+    font_url = "https://github.com/google/fonts/raw/main/ofl/sarabun/Sarabun-Regular.ttf"
+    
+    if not os.path.exists(font_name):
+        try:
+            urllib.request.urlretrieve(font_url, font_name)
+        except Exception as e:
+            pass
+            
     font_paths = [
+        font_name, 
         "tahoma.ttf", 
         "/System/Library/Fonts/Supplemental/Tahoma.ttf", 
         "/System/Library/Fonts/Thonburi.ttc", 
-        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf", 
         "C:\\Windows\\Fonts\\tahoma.ttf"
     ]
+    
     for path in font_paths:
         if os.path.exists(path):
             try:
@@ -107,12 +121,10 @@ def main():
 
         st.markdown("---")
         
-        # ปรับตัวเลือกให้เหลือ 2 ระดับ พร้อมปรับคำอธิบายให้เข้าใจง่าย
         diff_display = st.selectbox("ความเข้มงวด (Difficulty Level):", 
-                                    ["Beginner", "Advanced"], 
+                                    ["Beginner (ผู้เริ่มต้น)", "Advanced (ถูกต้องตามหลัก)"], 
                                     index=0)
         
-        # แปลงกลับเป็นคีย์เวิร์ดเพื่อส่งให้ rep_counter.py
         difficulty_level = "beginner" if "Beginner" in diff_display else "advanced"
 
         st.markdown("---")
@@ -198,7 +210,6 @@ def main():
                         features = preprocessor.normalize(lms)
                         window_frames.append(features)
 
-                    # Predict Action
                     if len(window_frames) == config.SEQUENCE_LENGTH:
                         if frame_counter % 3 == 0:
                             input_data = np.expand_dims(np.array(window_frames), axis=0)
@@ -218,13 +229,11 @@ def main():
                             confidence = predictions[voted_idx]
                             current_action = classes[voted_idx]
 
-                    # Logic for Repetition Counting & Form Check
                     try:
                         counters, stages, feedback_msg, fb_color, angle_data = rep_counter.process(current_action, confidence, landmarks, mp_pose)
                     except Exception:
                         pass
 
-                # วาดตัวเลของศาลงบนข้อต่อ (Visual Debugging)
                 if angle_data:
                     h, w, _ = image_rgb.shape
                     
@@ -235,12 +244,12 @@ def main():
                     cv2.putText(image_rgb, f"{int(p_angle)}", (px + 15, py), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)
                     
                     s_lm = angle_data['secondary']['landmark']
+                    # 📌 แก้ไขจาก ['landmark'] เป็น ['angle'] แล้วที่บรรทัดนี้
                     s_angle = angle_data['secondary']['angle']
                     sx, sy = int(s_lm.x * w), int(s_lm.y * h)
                     cv2.putText(image_rgb, f"{int(s_angle)}", (sx + 15, sy), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4, cv2.LINE_AA)
                     cv2.putText(image_rgb, f"{int(s_angle)}", (sx + 15, sy), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 100, 255), 2, cv2.LINE_AA)
 
-                # สร้าง Canvas พื้นดำ 800x550 สำหรับเทคนิค Letterboxing
                 canvas = np.zeros((550, 800, 3), dtype=np.uint8)
                 canvas[0:450, 0:800] = image_rgb
                 
@@ -259,8 +268,8 @@ def main():
                 else:
                     display_text = f"ท่าที่พบ: {current_action.upper()} ({confidence*100:.1f}%) | สถานะ: {current_stage.upper()}"
 
-                draw.text((15, 8), display_text, font=font_medium, fill=action_color)
-                draw.text((15, 465), f"ข้อเสนอแนะ: {feedback_msg}", font=font_large, fill=fb_color)
+                draw.text((25, 12), display_text, font=font_medium, fill=action_color)
+                draw.text((25, 465), f"ข้อเสนอแนะ: {feedback_msg}", font=font_large, fill=fb_color)
 
                 draw.text((630, 10), f"PUSHUP: {counters['pushup']}", font=font_medium, fill=(255, 165, 0) if current_action == 'pushup' else (255,255,255))
                 draw.text((630, 45), f"SQUAT : {counters['squat']}", font=font_medium, fill=(255, 165, 0) if current_action == 'squat' else (255,255,255))
@@ -269,7 +278,6 @@ def main():
                 final_frame = np.array(pil_img)
                 writer.write(cv2.cvtColor(final_frame, cv2.COLOR_RGB2BGR))
 
-                # อัปเดตเฉพาะ Progress Bar (Fast Mode เสมอ) ไม่มีการวาดภาพลง UI เพื่อความเร็ว
                 if frame_counter % 15 == 0 and total_frames > 0:
                     progress_bar.progress(min(frame_counter / total_frames, 1.0))
                     status_text.info(f"กำลังประมวลผล (Fast Mode)... {int(min(frame_counter / total_frames, 1.0) * 100)}%")
@@ -279,7 +287,8 @@ def main():
             
             status_text.info("กำลังเตรียมวิดีโอผลลัพธ์ (Finalizing video)...")
             try:
-                subprocess.run(['ffmpeg', '-y', '-i', temp_out_mp4, '-vcodec', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'fast', final_out_mp4], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                # ยังคงใส่ -an ไว้ เพื่อให้วิดีโอไม่มีเสียงมาตั้งแต่ต้นทาง (กันไว้ดีกว่าแก้)
+                subprocess.run(['ffmpeg', '-y', '-i', temp_out_mp4, '-vcodec', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'fast', '-an', final_out_mp4], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception:
                 final_out_mp4 = temp_out_mp4
 
@@ -294,7 +303,23 @@ def main():
             col2.metric("Squat", f"{counters['squat']}")
             col3.metric("Lunge", f"{counters['lunge']}")
 
-            st.bar_chart({"Pushup": counters['pushup'], "Squat": counters['squat'], "Lunge": counters['lunge']})
+            source = pd.DataFrame({
+                'Exercise': ['Pushup', 'Squat', 'Lunge'],
+                'Reps': [counters['pushup'], counters['squat'], counters['lunge']]
+            })
+
+            chart = alt.Chart(source).mark_bar(color='#88c2f8').encode(
+                x=alt.X('Exercise', sort=['Pushup', 'Squat', 'Lunge'], title=None, axis=alt.Axis(labelAngle=0)), 
+                y=alt.Y('Reps', title=None, axis=alt.Axis(tickMinStep=1)), 
+                tooltip=['Exercise', 'Reps']
+            ).properties(
+                height=350
+            ).configure_view(
+                strokeWidth=0 
+            )
+
+            st.altair_chart(chart, use_container_width=True, theme="streamlit")
+            
             st.markdown("<h2 style='text-align:center;'>ประสิทธิภาพระบบ (Performance Overview)</h2>", unsafe_allow_html=True)
 
             total_duration = time.time() - overall_start_time
