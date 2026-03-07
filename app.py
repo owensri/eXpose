@@ -109,12 +109,21 @@ def main():
 
     with st.sidebar:
         st.header("⚙️ การตั้งค่าระบบ")
-        model_choice = st.selectbox("เลือกโมเดล (Model):", ["LSTM + CNN", "CNN", "LSTM"])
         
+        # 📌 อัปเดตรายชื่อโมเดลใหม่ที่นี่
+        model_choice = st.selectbox("เลือกโมเดล (Model):", [
+            "1-Layer LSTM", 
+            "2-Layer LSTM", 
+            "LSTM + CNN (Hybrid)", 
+            "CNN"
+        ])
+        
+        # 📌 จับคู่ชื่อที่แสดงกับไฟล์ .keras ที่ถูกต้อง
         model_files = {
-            "LSTM + CNN": "exercise_model_hybrid.keras",
-            "CNN": "exercise_model_cnn.keras",
-            "LSTM": "exercise_model_lstm.keras"
+            "1-Layer LSTM": "exercise_model_lstm_1layer.keras",
+            "2-Layer LSTM": "exercise_model_lstm_2layer.keras",
+            "LSTM + CNN (Hybrid)": "exercise_model_hybrid.keras",
+            "CNN": "exercise_model_cnn.keras"
         }
         selected_model_file = model_files[model_choice]
         model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), selected_model_file)
@@ -142,7 +151,7 @@ def main():
             st.subheader(f"กำลังประมวลผล (ความเข้มงวด: {difficulty_level.capitalize()})")
             
             if not os.path.exists(model_path):
-                st.error(f"ไม่พบไฟล์โมเดล '{selected_model_file}'")
+                st.error(f"ไม่พบไฟล์โมเดล '{selected_model_file}' กรุณาตรวจสอบว่ามีไฟล์นี้อยู่ในโฟลเดอร์หลัก")
                 return
 
             overall_start_time = time.time()
@@ -244,7 +253,6 @@ def main():
                     cv2.putText(image_rgb, f"{int(p_angle)}", (px + 15, py), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)
                     
                     s_lm = angle_data['secondary']['landmark']
-                    # 📌 แก้ไขจาก ['landmark'] เป็น ['angle'] แล้วที่บรรทัดนี้
                     s_angle = angle_data['secondary']['angle']
                     sx, sy = int(s_lm.x * w), int(s_lm.y * h)
                     cv2.putText(image_rgb, f"{int(s_angle)}", (sx + 15, sy), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4, cv2.LINE_AA)
