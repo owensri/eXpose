@@ -14,19 +14,14 @@ from collections import deque
 from tensorflow.keras.models import load_model
 from PIL import Image, ImageDraw, ImageFont
 
-# Import local modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 import config
 from preprocessor import Preprocessor
 from smoother import LandmarkSmoother
 from rep_counter import RepCounter
 
-# ---------------------------------------------------------
-# Page Configuration & CSS
-# ---------------------------------------------------------
-st.set_page_config(page_title="AI Exercise Tracker", page_icon=None, layout="wide")
+st.set_page_config(page_title="AI Exercise Tracker", page_icon="🏋️‍♂️", layout="wide")
 
-# CSS เฉพาะการตกแต่งความสวยงามของตัวหนังสือและกล่องสรุปผล (ไม่มีการซ่อน UI แล้ว)
 st.markdown("""
     <style>
     .main { padding-top: 2rem; }
@@ -38,9 +33,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------
-# Constants & Helpers
-# ---------------------------------------------------------
 TARGET_INDICES = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]
 
 CUSTOM_CONNECTIONS = [
@@ -81,7 +73,7 @@ def get_thai_font(size):
     if not os.path.exists(font_name):
         try:
             urllib.request.urlretrieve(font_url, font_name)
-        except Exception as e:
+        except Exception:
             pass
             
     font_paths = [
@@ -100,9 +92,6 @@ def get_thai_font(size):
                 continue
     return ImageFont.load_default()
 
-# ---------------------------------------------------------
-# Main Execution
-# ---------------------------------------------------------
 def main():
     st.markdown("<h1 style='text-align: center;'>AI Exercise Analysis System</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #888888;'>ระบบวิเคราะห์ท่าออกกำลังกายและนับจำนวนครั้งอย่างแม่นยำ</p><br>", unsafe_allow_html=True)
@@ -110,7 +99,6 @@ def main():
     with st.sidebar:
         st.header("⚙️ การตั้งค่าระบบ")
         
-        # 📌 อัปเดตรายชื่อโมเดลใหม่ที่นี่
         model_choice = st.selectbox("เลือกโมเดล (Model):", [
             "1-Layer LSTM", 
             "2-Layer LSTM", 
@@ -118,7 +106,6 @@ def main():
             "CNN"
         ])
         
-        # 📌 จับคู่ชื่อที่แสดงกับไฟล์ .keras ที่ถูกต้อง
         model_files = {
             "1-Layer LSTM": "exercise_model_lstm_1layer.keras",
             "2-Layer LSTM": "exercise_model_lstm_2layer.keras",
@@ -129,17 +116,13 @@ def main():
         model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), selected_model_file)
 
         st.markdown("---")
-        
-        diff_display = st.selectbox("ความเข้มงวด (Difficulty Level):", 
-                                    ["Beginner", "Advanced"], 
-                                    index=0)
-        
+        diff_display = st.selectbox("ความเข้มงวด (Difficulty Level):", ["Beginner", "Advanced"], index=0)
         difficulty_level = "beginner" if "Beginner" in diff_display else "advanced"
 
         st.markdown("---")
         uploaded_file = st.file_uploader("อัปโหลดวิดีโอ (Video File)", type=['mp4', 'mov', 'avi'])
         st.markdown("---")
-        start_button = st.button("เริ่มวิเคราะห์ (Start Processing)", use_container_width=True, type="primary")
+        start_button = st.button("🚀 เริ่มวิเคราะห์ (Start Processing)", type="primary")
 
     if uploaded_file is None:
         st.info("กรุณาอัปโหลดวิดีโอและตั้งค่าระบบที่เมนูด้านซ้ายเพื่อเริ่มต้น")
@@ -157,8 +140,10 @@ def main():
             overall_start_time = time.time()
             model = load_model_cached(model_path)
             
-            font_large = get_thai_font(28)
-            font_medium = get_thai_font(22)
+            # ปรับขนาดฟอนต์ให้พอดี ไม่ให้ล้นทับกัน
+            font_title = get_thai_font(24)
+            font_feedback = get_thai_font(18) # ลดขนาดข้อเสนอแนะไม่ให้ชนขอบขวา
+            font_counter = get_thai_font(20)
 
             classes = config.CLASSES
             mp_pose = mp.solutions.pose
@@ -249,6 +234,7 @@ def main():
                     p_lm = angle_data['primary']['landmark']
                     p_angle = angle_data['primary']['angle']
                     px, py = int(p_lm.x * w), int(p_lm.y * h)
+                    # ข้อความมุมหลักจะวาดลงบนคลิปวิดีโอโดยตรง
                     cv2.putText(image_rgb, f"{int(p_angle)}", (px + 15, py), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4, cv2.LINE_AA)
                     cv2.putText(image_rgb, f"{int(p_angle)}", (px + 15, py), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)
                     
@@ -258,11 +244,19 @@ def main():
                     cv2.putText(image_rgb, f"{int(s_angle)}", (sx + 15, sy), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4, cv2.LINE_AA)
                     cv2.putText(image_rgb, f"{int(s_angle)}", (sx + 15, sy), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 100, 255), 2, cv2.LINE_AA)
 
+                # =========================================================
+                # จัด Layout หน้าจอใหม่: โซน Dashboard ด้านบน | โซน Video ด้านล่าง
+                # =========================================================
                 canvas = np.zeros((550, 800, 3), dtype=np.uint8)
-                canvas[0:450, 0:800] = image_rgb
                 
-                cv2.rectangle(canvas, (0, 0), (800, 45), (0, 0, 0), -1)
-                cv2.rectangle(canvas, (620, 0), (800, 110), (40, 40, 40), -1)
+                # เลื่อนวิดีโอลงมา 100 พิกเซล เพื่อไม่ให้โดนตัวหนังสือบัง
+                canvas[100:550, 0:800] = image_rgb
+                
+                # วาดกรอบสี่เหลี่ยมสีเทาเข้มเป็นพื้นหลังกล่องนับคะแนน (มุมขวาบน)
+                cv2.rectangle(canvas, (620, 0), (800, 100), (40, 40, 40), -1)
+                
+                # เส้นขอบบางๆ แบ่งแยกส่วนข้อมูลและวิดีโอ
+                cv2.line(canvas, (0, 100), (800, 100), (200, 200, 200), 1)
 
                 pil_img = Image.fromarray(canvas)
                 draw = ImageDraw.Draw(pil_img)
@@ -276,12 +270,14 @@ def main():
                 else:
                     display_text = f"ท่าที่พบ: {current_action.upper()} ({confidence*100:.1f}%) | สถานะ: {current_stage.upper()}"
 
-                draw.text((25, 12), display_text, font=font_medium, fill=action_color)
-                draw.text((25, 465), f"ข้อเสนอแนะ: {feedback_msg}", font=font_large, fill=fb_color)
+                # วาดตัวหนังสือทุกอย่างให้อยู่ในระยะ Y = 0 ถึง 100 (อยู่ในกรอบดำล้วน)
+                draw.text((20, 15), display_text, font=font_title, fill=action_color)
+                draw.text((20, 60), f"ข้อเสนอแนะ: {feedback_msg}", font=font_feedback, fill=fb_color)
 
-                draw.text((630, 10), f"PUSHUP: {counters['pushup']}", font=font_medium, fill=(255, 165, 0) if current_action == 'pushup' else (255,255,255))
-                draw.text((630, 45), f"SQUAT : {counters['squat']}", font=font_medium, fill=(255, 165, 0) if current_action == 'squat' else (255,255,255))
-                draw.text((630, 80), f"LUNGE : {counters['lunge']}", font=font_medium, fill=(255, 165, 0) if current_action == 'lunge' else (255,255,255))
+                # ตัวนับคะแนน 3 ท่าทาง (อยู่ในกรอบสีเทาขวาบน ขยับให้ไม่ชิดขอบซ้ายเกินไป)
+                draw.text((635, 12), f"PUSHUP: {counters['pushup']}", font=font_counter, fill=(255, 165, 0) if current_action == 'pushup' else (255,255,255))
+                draw.text((635, 42), f"SQUAT : {counters['squat']}", font=font_counter, fill=(255, 165, 0) if current_action == 'squat' else (255,255,255))
+                draw.text((635, 72), f"LUNGE : {counters['lunge']}", font=font_counter, fill=(255, 165, 0) if current_action == 'lunge' else (255,255,255))
 
                 final_frame = np.array(pil_img)
                 writer.write(cv2.cvtColor(final_frame, cv2.COLOR_RGB2BGR))
@@ -292,18 +288,17 @@ def main():
 
             cap.release()
             writer.release()
-            
+                
             status_text.info("กำลังเตรียมวิดีโอผลลัพธ์ (Finalizing video)...")
             try:
-                # ยังคงใส่ -an ไว้ เพื่อให้วิดีโอไม่มีเสียงมาตั้งแต่ต้นทาง (กันไว้ดีกว่าแก้)
                 subprocess.run(['ffmpeg', '-y', '-i', temp_out_mp4, '-vcodec', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'fast', '-an', final_out_mp4], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception:
                 final_out_mp4 = temp_out_mp4
 
             progress_bar.empty()
             status_text.empty()
-
             st.success("ประมวลผลเสร็จสมบูรณ์!")
+
             st.markdown("<h2 style='text-align:center;'>สรุปจำนวนครั้ง (Repetition Dashboard)</h2>", unsafe_allow_html=True)
 
             col1, col2, col3 = st.columns(3)
@@ -335,7 +330,8 @@ def main():
             col_time.metric("เวลาที่ใช้ทั้งหมด (วินาที)", f"{total_duration:.2f}")
             col_fps.metric("ความเร็วเฉลี่ย (FPS)", f"{frame_counter / total_duration:.1f}")
 
-            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<hr>", unsafe_allow_html=True)
+            st.markdown("<h2 style='text-align:center;'>วิดีโอผลลัพธ์ (Playback)</h2>", unsafe_allow_html=True)
             st.video(final_out_mp4)
 
 if __name__ == "__main__":
